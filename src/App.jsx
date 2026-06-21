@@ -62,7 +62,7 @@ export default function App() {
   const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
-    // Inject Tailwind Dynamic Override
+    // Inject Tailwind Dynamic Override to prevent any raw unstyled flash
     if (!document.getElementById('tailwind-cdn-override')) {
       const tailwindScript = document.createElement('script');
       tailwindScript.id = 'tailwind-cdn-override';
@@ -164,7 +164,6 @@ export default function App() {
     return () => clearTimeout(splashTimer);
   }, []);
 
-  // UI States
   const [activeTab, setActiveTab] = useState('home'); 
   const [currentRole, setCurrentRole] = useState('buyer'); 
   const [isLoading, setIsLoading] = useState(false);
@@ -178,7 +177,7 @@ export default function App() {
   const [authReferId, setAuthReferId] = useState('');
   const [authMode, setAuthMode] = useState('signup'); 
 
-  // Firestore Profile model
+  // Firestore Profile model with zero-crash fallbacks
   const [userProfile, setUserProfile] = useState({
     name: 'GUEST USER',
     email: '',
@@ -238,7 +237,14 @@ export default function App() {
     const profileRef = db.doc(`artifacts/${appId}/users/${firebaseUser.uid}/profile/data`);
     const unsubscribe = profileRef.onSnapshot((docSnap) => {
       if (docSnap.exists) {
-        setUserProfile(docSnap.data());
+        const remoteData = docSnap.data();
+        // Safe Merge to prevent old record crashes
+        setUserProfile(prev => ({
+          ...prev,
+          ...remoteData,
+          bankAccounts: remoteData.bankAccounts || prev.bankAccounts,
+          avatarUrl: remoteData.avatarUrl || prev.avatarUrl
+        }));
       } else {
         const myRandomRefer = 'FNX' + Math.floor(1000 + Math.random() * 9000);
         const defaultProfile = {
@@ -322,6 +328,14 @@ export default function App() {
     return () => clearInterval(timer);
   }, [userProfile]);
 
+  const handleTabChange = (tab) => {
+    setIsLoading(true);
+    setActiveTab(tab);
+    setTimeout(() => {
+      setIsLoading(false);
+    }, 300);
+  };
+
   // ==========================================
   // TRANSACTION VALIDATORS (00 ENDINGS & IN LIMITS)
   // ==========================================
@@ -390,10 +404,10 @@ export default function App() {
       accountName: userProfile.name,
       accountNumber: newAccountNo,
       ifscCode: newIfsc,
-      isPrimary: userProfile.bankAccounts.length === 0
+      isPrimary: (userProfile.bankAccounts || []).length === 0
     };
 
-    const updatedAccounts = [...userProfile.bankAccounts, newAccountObj];
+    const updatedAccounts = [...(userProfile.bankAccounts || []), newAccountObj];
     const profileRef = db.doc(`artifacts/${appId}/users/${firebaseUser.uid}/profile/data`);
     await profileRef.update({ bankAccounts: updatedAccounts });
 
@@ -524,7 +538,7 @@ export default function App() {
       return;
     }
 
-    const selectedBank = userProfile.bankAccounts.find(acc => acc.id === selectedBankIdForSell);
+    const selectedBank = (userProfile.bankAccounts || []).find(acc => acc.id === selectedBankIdForSell);
     if (!selectedBank) {
       triggerToast("Kripya ek verified Bank Account zaroor select karein.", "error");
       return;
@@ -1031,7 +1045,7 @@ export default function App() {
               onClick={() => handleTabChange('profile')}
               className="h-8 w-8 rounded-full overflow-hidden border border-blue-200 shadow-sm"
             >
-              <img src={userProfile.avatarUrl} alt="Avatar" className="object-cover h-full w-full" />
+              <img src={userProfile.avatarUrl || PREBUILT_AVATARS[0]} alt="Avatar" className="object-cover h-full w-full" />
             </button>
           </div>
         </header>
@@ -1079,7 +1093,7 @@ export default function App() {
                       <span className="text-lg animate-bounce">🔒</span>
                       <div className="text-[10px] leading-relaxed text-amber-900">
                         <span className="font-bold block text-xs">1-Hour Safe Hold Lock Active!</span>
-                        Aapka <span className="font-bold">{userProfile.activeSellHold.lockedAmount} USDT</span> locked hai. Lock expire hone me <span className="font-extrabold font-mono text-xs text-rose-600">{sellHoldTimeRemaining}</span> bacha hai. Tab tak doosra sell process blocked rahega.
+                        Aapka <span className="font-bold">{(userProfile.activeSellHold.lockedAmount || 0)} USDT</span> locked hai. Lock expire hone me <span className="font-extrabold font-mono text-xs text-rose-600">{sellHoldTimeRemaining}</span> bacha hai. Tab tak doosra sell process blocked rahega.
                       </div>
                     </div>
                   )}
@@ -1092,7 +1106,7 @@ export default function App() {
                       <div>
                         <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">My Safe Holdings</span>
                         <span className="text-3xl font-black text-slate-900 mt-0.5 block tracking-tight">
-                          {userProfile.usdtBalance.toFixed(2)}{' '}
+                          {(userProfile.usdtBalance || 0).toFixed(2)}{' '}
                           <span className="text-sm font-bold text-blue-600 font-mono">USDT</span>
                         </span>
                       </div>
@@ -1105,13 +1119,13 @@ export default function App() {
                       <div>
                         <span className="text-slate-400 block font-semibold text-[10px]">Estimated Value</span>
                         <span className="text-slate-800 font-bold block mt-0.5">
-                          ₹{(userProfile.usdtBalance * 88.00).toLocaleString('en-IN')}
+                          ₹{((userProfile.usdtBalance || 0) * 88.00).toLocaleString('en-IN')}
                         </span>
                       </div>
                       <div>
                         <span className="text-slate-400 block font-semibold text-[10px]">Locked In Hold</span>
                         <span className="text-amber-600 font-bold block mt-0.5">
-                          ₹{(userProfile.escrowLocked * 88.00).toLocaleString('en-IN')}
+                          ₹{((userProfile.escrowLocked || 0) * 88.00).toLocaleString('en-IN')}
                         </span>
                       </div>
                     </div>
@@ -1208,7 +1222,7 @@ export default function App() {
                           <div className="flex justify-between items-start">
                             <div className="flex items-center gap-3">
                               <div className="h-9 w-9 bg-blue-50 border border-blue-100 rounded-xl flex items-center justify-center font-bold text-blue-700 text-sm">
-                                {offer.sellerName[0]}
+                                {offer.sellerName ? offer.sellerName[0] : 'S'}
                               </div>
                               <div>
                                 <div className="flex flex-wrap items-center gap-1">
@@ -1225,18 +1239,18 @@ export default function App() {
 
                             <div className="text-right">
                               <span className="text-[9px] text-slate-400 font-extrabold block">Rate</span>
-                              <span className="text-base font-black text-emerald-600">₹{offer.pricePerUsdt.toFixed(2)}</span>
+                              <span className="text-base font-black text-emerald-600">₹{(offer.pricePerUsdt || 88).toFixed(2)}</span>
                             </div>
                           </div>
 
                           <div className="grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-[11px] leading-tight text-slate-600">
                             <div>
                               <span className="text-slate-400 block font-bold text-[9px] uppercase">Available</span>
-                              <span className="font-extrabold text-slate-850 font-mono">{offer.usdtAmount.toLocaleString()} USDT</span>
+                              <span className="font-extrabold text-slate-850 font-mono">{(offer.usdtAmount || 0).toLocaleString()} USDT</span>
                             </div>
                             <div>
                               <span className="text-slate-400 block font-bold text-[9px] uppercase">Limit range</span>
-                              <span className="font-extrabold text-slate-850 font-mono">₹{offer.minLimit.toLocaleString('en-IN')} - ₹{offer.maxLimit.toLocaleString('en-IN')}</span>
+                              <span className="font-extrabold text-slate-850 font-mono">₹{(offer.minLimit || 0).toLocaleString('en-IN')} - ₹{(offer.maxLimit || 0).toLocaleString('en-IN')}</span>
                             </div>
                           </div>
 
@@ -1291,7 +1305,7 @@ export default function App() {
                           <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 text-xs space-y-2">
                             <div className="flex justify-between">
                               <span className="text-slate-400">Locked Rate:</span>
-                              <span className="font-bold text-slate-700">₹{activeBuyOffer.pricePerUsdt.toFixed(2)}</span>
+                              <span className="font-bold text-slate-700">₹{(activeBuyOffer.pricePerUsdt || 88).toFixed(2)}</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-slate-400">Security Fee (0.5%):</span>
@@ -1358,7 +1372,7 @@ export default function App() {
                           onChange={(e) => setSelectedBankIdForSell(e.target.value)}
                           className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-800"
                         >
-                          {userProfile.bankAccounts.map(acc => (
+                          {(userProfile.bankAccounts || []).map(acc => (
                             <option key={acc.id} value={acc.id}>{acc.bankName} - {acc.accountNumber} ({acc.accountName})</option>
                           ))}
                         </select>
@@ -1584,20 +1598,20 @@ export default function App() {
                 <div className="space-y-5 font-sans">
                   
                   {/* Local Balance */}
-                  <div className="bg-white p-5 rounded-3xl border border-slate-150 shadow-sm space-y-4">
+                  <div className="bg-white p-5 rounded-3xl border border-slate-150 shadow-sm relative overflow-hidden">
                     <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider block">Unified Ledger Balance</span>
                     
-                    <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                    <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-100 mt-2">
                       <div className="h-10 w-10 rounded-full border-4 border-blue-600 flex items-center justify-center font-bold text-xs text-blue-700 font-mono shrink-0">
                         100%
                       </div>
                       <div>
                         <span className="text-[9px] text-slate-400 font-bold uppercase block">SafeVault target</span>
-                        <span className="text-xs font-bold text-slate-700 block">INR Pegged Network</span>
+                        <span className="text-xs font-bold text-slate-700 block">INR Pegged Wallet Network</span>
                       </div>
                     </div>
 
-                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex items-center justify-between gap-3 text-xs overflow-hidden">
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex items-center justify-between gap-3 text-xs overflow-hidden mt-3">
                       <span className="text-slate-400 font-mono text-[9px] truncate">
                         {firebaseUser ? `0x${firebaseUser.uid}` : '0x71C35342a78a9c148'}
                       </span>
@@ -1632,11 +1646,11 @@ export default function App() {
                             const { db } = firebaseServices;
                             const profileRef = db.doc(`artifacts/${appId}/users/${firebaseUser.uid}/profile/data`);
                             profileRef.update({
-                              usdtBalance: userProfile.usdtBalance + 250
+                              usdtBalance: (userProfile.usdtBalance || 0) + 250
                             });
                             triggerToast("Added 250 USDT!", "success");
                           }}
-                          className="flex-1 bg-slate-50 border border-slate-200 text-slate-600 py-2 rounded-xl text-[10px] font-extrabold animate-pulse"
+                          className="flex-1 bg-slate-50 border border-slate-200 text-slate-600 py-2 rounded-xl text-[10px] font-extrabold"
                         >
                           +250 USDT
                         </button>
@@ -1646,7 +1660,7 @@ export default function App() {
                             const { db } = firebaseServices;
                             const profileRef = db.doc(`artifacts/${appId}/users/${firebaseUser.uid}/profile/data`);
                             profileRef.update({
-                              fiatBalance: userProfile.fiatBalance + 10000
+                              fiatBalance: (userProfile.fiatBalance || 0) + 10000
                             });
                             triggerToast("Loaded ₹10,000 cash!", "success");
                           }}
@@ -1670,8 +1684,8 @@ export default function App() {
                   {/* Premium Profile card */}
                   <div className="bg-white p-4 rounded-3xl border border-slate-150 space-y-4 shadow-sm">
                     <div className="flex items-center gap-3">
-                      <div className="h-12 w-12 rounded-full overflow-hidden border border-blue-200 shadow-sm relative">
-                        <img src={userProfile.avatarUrl} alt="Avatar" className="object-cover h-full w-full" />
+                      <div className="h-12 w-12 rounded-full overflow-hidden border border-blue-200 shadow-sm relative shrink-0">
+                        <img src={userProfile.avatarUrl || PREBUILT_AVATARS[0]} alt="Avatar" className="object-cover h-full w-full" />
                       </div>
                       <div>
                         <h4 className="text-base font-black text-slate-900 leading-tight">{userProfile.name}</h4>
@@ -1699,7 +1713,7 @@ export default function App() {
                   {/* BANK ACCOUNTS CARD VIEW (MANAGEMENT) */}
                   <div className="bg-white p-4 rounded-3xl border border-slate-150 shadow-sm space-y-3">
                     <div className="flex justify-between items-center">
-                      <span className="text-[10px] text-slate-400 font-extrabold uppercase">My Bank Accounts ({userProfile.bankAccounts.length})</span>
+                      <span className="text-[10px] text-slate-400 font-extrabold uppercase">My Bank Accounts ({(userProfile.bankAccounts || []).length})</span>
                       <button 
                         onClick={() => setActiveSheet('bank-accounts')}
                         className="text-[10px] bg-blue-50 text-blue-700 border border-blue-100 px-2.5 py-1 rounded-xl font-bold"
@@ -1709,14 +1723,14 @@ export default function App() {
                     </div>
 
                     <div className="space-y-2">
-                      {userProfile.bankAccounts.map((acc) => (
+                      {(userProfile.bankAccounts || []).map((acc) => (
                         <div key={acc.id} className="p-3 bg-slate-50 rounded-2xl border border-slate-100 text-xs flex justify-between items-center">
                           <div>
                             <span className="font-extrabold text-slate-800 block">{acc.bankName}</span>
                             <span className="text-[10px] text-slate-500 font-mono block">A/c: {acc.accountNumber} • {acc.ifscCode}</span>
                           </div>
                           {acc.isPrimary && (
-                            <span className="bg-blue-100 text-blue-700 text-[8px] font-black px-2 py-0.5 rounded-full uppercase">Primary</span>
+                            <span className="bg-blue-100 text-blue-700 text-[8px] font-black px-2 py-0.5 rounded-full uppercase shrink-0">Primary</span>
                           )}
                         </div>
                       ))}
