@@ -36,7 +36,7 @@ const FALLBACK_OFFERS = [
     maxLimit: 75000,
     paymentMethod: 'Bank Deposit',
     status: 'Active',
-    volumeTraded: 1250 // Pro Verified (>1000)
+    volumeTraded: 1250
   },
   {
     id: 'off_902',
@@ -50,12 +50,11 @@ const FALLBACK_OFFERS = [
     maxLimit: 40000,
     paymentMethod: 'Bank Deposit',
     status: 'Active',
-    volumeTraded: 420 // Regular Seller
+    volumeTraded: 420
   }
 ];
 
 export default function App() {
-  // Stylesheet & Dynamic CDN Script Loader (Prevents local build errors)
   const [firebaseServices, setFirebaseServices] = useState(null); 
   const [firebaseUser, setFirebaseUser] = useState(null);
   const [isFirebaseLoading, setIsFirebaseLoading] = useState(true);
@@ -63,7 +62,7 @@ export default function App() {
   const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
-    // Inject Tailwind
+    // Inject Tailwind Dynamic Override
     if (!document.getElementById('tailwind-cdn-override')) {
       const tailwindScript = document.createElement('script');
       tailwindScript.id = 'tailwind-cdn-override';
@@ -96,7 +95,6 @@ export default function App() {
       setIsTailwindLoaded(true);
     }
 
-    // Inject Plus Jakarta Font
     const fontLink = document.createElement('link');
     fontLink.href = 'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap';
     fontLink.rel = 'stylesheet';
@@ -114,7 +112,7 @@ export default function App() {
     `;
     document.head.appendChild(styleOverride);
 
-    // Dynamic Firebase CDN scripts loading to bypass disk ENOSPC
+    // Dynamic Compat Firebase loader from cloud
     const loadFirebaseFromCDN = async () => {
       try {
         if (window.firebase) {
@@ -159,7 +157,6 @@ export default function App() {
 
     loadFirebaseFromCDN();
 
-    // Enforce Splash Screen visibility timeout (2.5 seconds minimum)
     const splashTimer = setTimeout(() => {
       setShowSplash(false);
     }, 2500);
@@ -171,7 +168,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('home'); 
   const [currentRole, setCurrentRole] = useState('buyer'); 
   const [isLoading, setIsLoading] = useState(false);
-  const [activeSheet, setActiveSheet] = useState(null); // 'notifications', 'bank-accounts', 'refer-earn', 'legal-about', 'legal-terms', 'legal-privacy', 'legal-risk', 'legal-fees'
+  const [activeSheet, setActiveSheet] = useState(null); 
   
   // Registration States
   const [authName, setAuthName] = useState('');
@@ -234,7 +231,6 @@ export default function App() {
     setTimeout(() => setToast(null), 3500);
   };
 
-  // Sync Profile with Database
   useEffect(() => {
     if (!firebaseServices || !firebaseUser || firebaseUser.isAnonymous) return;
     const { db } = firebaseServices;
@@ -246,7 +242,7 @@ export default function App() {
       } else {
         const myRandomRefer = 'FNX' + Math.floor(1000 + Math.random() * 9000);
         const defaultProfile = {
-          name: authEmail ? authEmail.split('@')[0].toUpperCase() : 'RAJESH PATEL',
+          name: authName ? authName.toUpperCase() : (authEmail ? authEmail.split('@')[0].toUpperCase() : 'RAJESH PATEL'),
           email: firebaseUser.email || 'rajesh.patel@finnox.com',
           phone: authPhone || '9876543210',
           usdtBalance: 850.00, 
@@ -257,7 +253,7 @@ export default function App() {
           avatarUrl: PREBUILT_AVATARS[0],
           activeSellHold: null,
           bankAccounts: [
-            { id: 'b1', bankName: 'HDFC Bank', accountName: authEmail ? authEmail.split('@')[0].toUpperCase() : 'RAJESH PATEL', accountNumber: '5010048' + Math.floor(100000 + Math.random() * 900000), ifscCode: 'HDFC0000060', isPrimary: true }
+            { id: 'b1', bankName: 'HDFC Bank', accountName: authName ? authName.toUpperCase() : (authEmail ? authEmail.split('@')[0].toUpperCase() : 'RAJESH PATEL'), accountNumber: '5010048' + Math.floor(100000 + Math.random() * 900000), ifscCode: 'HDFC0000060', isPrimary: true }
           ],
           referralsCount: 0,
           totalReferralEarnings: 0
@@ -326,19 +322,6 @@ export default function App() {
     return () => clearInterval(timer);
   }, [userProfile]);
 
-  const handleTabChange = (tab) => {
-    setIsLoading(true);
-    setActiveTab(tab);
-    setTimeout(() => {
-      setIsLoading(false);
-    }, 300);
-  };
-
-  const handleRoleChange = (role) => {
-    setCurrentRole(role);
-    triggerToast(`Switched active context to: ${role.toUpperCase()}`, 'info');
-  };
-
   // ==========================================
   // TRANSACTION VALIDATORS (00 ENDINGS & IN LIMITS)
   // ==========================================
@@ -347,12 +330,46 @@ export default function App() {
       setErrorModal("Transactions strictly ₹100 minimum aur ₹1,00,000 maximum limits me hi allowed hain.");
       return false;
     }
-    // Strict last two digits must be '00'
     if (fiatAmount % 100 !== 0) {
-      setErrorModal("⚠️ Non-round transaction amount blocked! Aap ₹101 ya ₹409 jaise randy numbers me transfer nahi kar sakte. Amount strictly last me double zero '00' endings me hona chahiye (e.g., ₹100, ₹1800, ₹41000).");
+      setErrorModal("⚠️ Non-round transaction amount blocked! Aap ₹101 ya ₹409 jaise decimals ya random digits me transfer nahi kar sakte. Amount strictly double zero '00' endings me hona chahiye (e.g., ₹100, ₹1800, ₹41000).");
       return false;
     }
     return true;
+  };
+
+  const handleRequestWithdraw = () => {
+    if (userProfile.activeSellHold && userProfile.activeSellHold.expiresAt > Date.now()) {
+      setErrorModal(`Aapka USDT Safe-Hold active hai! Aap lock period (${sellHoldTimeRemaining}) se pehle assets withdraw nahi kar sakte.`);
+    } else {
+      triggerToast("Withdrawal process under Bank holiday cycle settlement. Try tomorrow.", "info");
+    }
+  };
+
+  const handleOpenDispute = async () => {
+    if (!firebaseServices || !selectedTradeId) return;
+    const { db } = firebaseServices;
+    const tradeRef = db.doc(`artifacts/${appId}/public/data/trades/${selectedTradeId}`);
+    
+    await tradeRef.update({
+      status: 'DISPUTED',
+      messages: [
+        ...currentTrade.messages,
+        { senderId: 'system', text: '🚨 DISPUTE INITIATED. Finnox support team will verify manual bank deposits receipts.', timestamp: 'Just now' }
+      ]
+    });
+    triggerToast("Dispute opened successfully. Support team notified.", "warning");
+  };
+
+  const handleLogout = async () => {
+    if (!firebaseServices) return;
+    try {
+      await firebaseServices.auth.signOut();
+      setFirebaseUser(null);
+      triggerToast("Logged out successfully.", "info");
+      handleTabChange('home');
+    } catch (err) {
+      triggerToast(err.message, "error");
+    }
   };
 
   // ==========================================
@@ -405,7 +422,6 @@ export default function App() {
       const userCredential = await auth.createUserWithEmailAndPassword(authEmail, authPassword);
       const user = userCredential.user;
 
-      // Trigger actual Firebase Email Verification Link
       await user.sendEmailVerification();
       triggerToast("Verification Link is on the way! Check your inbox.", "success");
 
@@ -439,7 +455,7 @@ export default function App() {
 
       setSuccessModal({
         title: 'Verifying Email Required 🛡️',
-        desc: `Aapki security ke liye verification link ${authEmail} par bhej diya gaya hai. Kripya apna SPAM/Junk folder zaroor check karein kyuki kabhi-kabhi verification mail wahan chala jata hai.`
+        desc: `Aapki security ke liye verification link ${authEmail} par bhej diya gaya hai. Kripya apna SPAM/Junk folder zaroor check karein.`
       });
       setIsLoading(false);
     } catch (error) {
@@ -461,16 +477,6 @@ export default function App() {
       triggerToast("Humne verify nahi kiya hai. Apne inbox aur SPAM folder ko check karein.", "warning");
     }
     setIsLoading(false);
-  };
-
-  const handleResendEmail = async () => {
-    if (!firebaseServices || !firebaseUser) return;
-    try {
-      await firebaseServices.auth.currentUser.sendEmailVerification();
-      triggerToast("Verification Email has been resent! Check SPAM folder too.", "success");
-    } catch (err) {
-      setErrorModal(err.message);
-    }
   };
 
   const handleEmailSignIn = async (e) => {
@@ -518,7 +524,6 @@ export default function App() {
       return;
     }
 
-    // Selected bank account verification
     const selectedBank = userProfile.bankAccounts.find(acc => acc.id === selectedBankIdForSell);
     if (!selectedBank) {
       triggerToast("Kripya ek verified Bank Account zaroor select karein.", "error");
@@ -554,13 +559,13 @@ export default function App() {
       completionRate: '99%',
       usdtAmount: qty,
       pricePerUsdt: rate,
-      minLimit: 100, // strictly minimum INR 100
-      maxLimit: 100000, // strictly max INR 1 Lakh
+      minLimit: 100, 
+      maxLimit: 100000, 
       paymentMethod: 'Bank Deposit',
       status: 'Active',
       expiresAt: expiresAt,
       linkedBank: selectedBank,
-      volumeTraded: userProfile.escrowLocked > 1000 ? 1200 : 450 // dynamic Verified Pro metric
+      volumeTraded: userProfile.escrowLocked > 1000 ? 1200 : 450
     });
 
     setSellQuantityInput('');
@@ -595,7 +600,6 @@ export default function App() {
     }
     const totalFiat = amt * activeBuyOffer.pricePerUsdt;
 
-    // Apply Round Numbers Rules
     if (!validateAmountRule(totalFiat)) return;
 
     if (totalFiat > userProfile.fiatBalance) {
@@ -666,17 +670,6 @@ export default function App() {
       fiatBalance: userProfile.fiatBalance - currentTrade.fiatAmount
     });
 
-    // Write to direct user transaction records in Firestore
-    const userTxLogRef = db.collection(`artifacts/${appId}/users/${firebaseUser.uid}/transactions`).doc(selectedTradeId);
-    await userTxLogRef.set({
-      id: selectedTradeId,
-      amountUSDT: currentTrade.usdtAmount,
-      fiatINR: currentTrade.fiatAmount,
-      type: 'BUY',
-      status: 'PAID',
-      date: new Date().toISOString()
-    });
-
     triggerToast("Payment marked! Waiting for Seller validation.", "success");
   };
 
@@ -685,7 +678,7 @@ export default function App() {
     const { db } = firebaseServices;
     const tradeRef = db.doc(`artifacts/${appId}/public/data/trades/${selectedTradeId}`);
     
-    const calculatedFee = currentTrade.fiatAmount * 0.005; // 0.5% Platform Fee
+    const calculatedFee = currentTrade.fiatAmount * 0.005;
 
     await tradeRef.update({
       status: 'COMPLETED',
@@ -712,44 +705,6 @@ export default function App() {
       await buyerProfileRef.update({
         usdtBalance: buyerSnap.data().usdtBalance + currentTrade.usdtAmount
       });
-    }
-
-    // Save transaction logs on both parties databases
-    await db.collection(`artifacts/${appId}/users/${currentTrade.buyerId}/transactions`).doc(selectedTradeId).set({
-      id: selectedTradeId,
-      amountUSDT: currentTrade.usdtAmount,
-      fiatINR: currentTrade.fiatAmount,
-      type: 'BUY',
-      status: 'COMPLETED',
-      date: new Date().toISOString()
-    });
-
-    await db.collection(`artifacts/${appId}/users/${currentTrade.sellerId}/transactions`).doc(selectedTradeId).set({
-      id: selectedTradeId,
-      amountUSDT: currentTrade.usdtAmount,
-      fiatINR: currentTrade.fiatAmount,
-      type: 'SELL',
-      status: 'COMPLETED',
-      date: new Date().toISOString()
-    });
-
-    // Check Refer Reward conditions: After first $100 (₹8500) sell hold settled
-    if (userProfile.referredBy && currentTrade.fiatAmount >= 8500) {
-      const publicReferRef = db.doc(`artifacts/${appId}/public/data/referrals/${userProfile.referredBy.toUpperCase()}`);
-      const referSnap = await publicReferRef.get();
-      if (referSnap.exists) {
-        const referrerUid = referSnap.data().ownerUid;
-        const referrerProfileRef = db.doc(`artifacts/${appId}/users/${referrerUid}/profile/data`);
-        const referrerSnap = await referrerProfileRef.get();
-        if (referrerSnap.exists) {
-          const currentRefData = referrerSnap.data();
-          await referrerProfileRef.update({
-            usdtBalance: currentRefData.usdtBalance + 10, // $10 USDT refer reward
-            totalReferralEarnings: currentRefData.totalReferralEarnings + 10,
-            referralsCount: currentRefData.referralsCount + 1
-          });
-        }
-      }
     }
 
     setSuccessModal({
@@ -782,11 +737,10 @@ export default function App() {
 
   const currentTrade = trades.find(t => t.id === selectedTradeId);
 
-  // Unstyled FOUC Prevention Loader
   if (!isTailwindLoaded) {
     return (
       <div style={{
-        height: '100vh',
+        height: '100dvh',
         width: '100vw',
         background: '#ffffff',
         display: 'flex',
@@ -815,9 +769,9 @@ export default function App() {
     <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center py-0 md:py-6 px-0 sm:px-4">
       
       {/* ==========================================
-          MOBILE VIEWPORT CONTAINER (390px Native App Shell)
+          MOBILE VIEWPORT CONTAINER (390px Dynamic App Shell)
          ========================================== */}
-      <div className="w-full max-w-[390px] h-screen md:h-[844px] bg-white flex flex-col justify-between relative shadow-2xl md:rounded-[40px] md:border-[12px] md:border-slate-800 overflow-hidden text-slate-800 pb-16">
+      <div className="w-full max-w-[390px] h-[100dvh] md:h-[844px] bg-white flex flex-col justify-between relative shadow-2xl md:rounded-[40px] md:border-[12px] md:border-slate-800 overflow-hidden text-slate-800">
         
         {/* ==========================================
             FINTECH ANIMATED SPLASH SCREEN (2.5 Sec Minimum)
@@ -1031,10 +985,7 @@ export default function App() {
                   Verify completed? Click here to verify status 🔄
                 </button>
                 <button 
-                  onClick={() => {
-                    firebaseUser.sendEmailVerification();
-                    triggerToast("Verification email resent!", "success");
-                  }}
+                  onClick={handleResendEmail}
                   className="w-full bg-slate-100 text-slate-700 py-3 rounded-xl text-xs font-bold"
                 >
                   Resend Verification Email ✉️
@@ -1088,7 +1039,7 @@ export default function App() {
         {/* ==========================================
             SCROLLABLE CONTENT AREA
            ========================================== */}
-        <div className="flex-1 overflow-y-auto overscroll-contain p-4 bg-slate-50 scrollbar-none pb-6">
+        <div className="flex-1 overflow-y-auto overscroll-contain p-4 bg-slate-50 scrollbar-none pb-20">
           
           {isLoading ? (
             <div className="space-y-4 animate-pulse">
